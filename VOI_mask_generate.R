@@ -7,12 +7,13 @@ library(RNifti)
 mask <- array(0, dim = c(67,80,46))
 
 # Store coordinates for centers of VOIs (converted from MNI coordinates)
-MFG <- c(47,46,31)
-PCC <- c(34,29,27)
+R_MFG <- c(48,45,31)
+R_Insula <- c(46,55,21)
+Precuneus <- c(34,28,31)
 
 # Add MFG into mask with a radius of ~8mm 
-center <- MFG
-size <- c(6, 6, 4)  # number of voxels along X, Y, Z
+center <- R_MFG
+size <- c(5, 5, 3)  # number of voxels along X, Y, Z
 
 x_range <- (center[1] - floor((size[1]-1)/2)):(center[1] + ceiling((size[1]-1)/2))
 y_range <- (center[2] - floor((size[2]-1)/2)):(center[2] + ceiling((size[2]-1)/2))
@@ -24,9 +25,9 @@ for (i in 1:nrow(cube_voxels)) {
   mask[cube_voxels$x[i], cube_voxels$y[i], cube_voxels$z[i]] <- 1
 }
 
-# Add PCC into mask with a radius of ~8mm 
-center <- PCC
-size <- c(6, 6, 4)  # number of voxels along X, Y, Z
+# Add R_Insula into mask with a radius of ~8mm 
+center <- R_Insula
+size <- c(5, 5, 3)  # number of voxels along X, Y, Z
 
 x_range <- (center[1] - floor((size[1]-1)/2)):(center[1] + ceiling((size[1]-1)/2))
 y_range <- (center[2] - floor((size[2]-1)/2)):(center[2] + ceiling((size[2]-1)/2))
@@ -36,6 +37,20 @@ cube_voxels <- expand.grid(x=x_range, y=y_range, z=z_range)
 
 for (i in 1:nrow(cube_voxels)) {
   mask[cube_voxels$x[i], cube_voxels$y[i], cube_voxels$z[i]] <- 2
+}
+
+# Add PCC/Precuneus into mask with a radius of ~8mm 
+center <- Precuneus
+size <- c(5, 5, 3)  # number of voxels along X, Y, Z
+
+x_range <- (center[1] - floor((size[1]-1)/2)):(center[1] + ceiling((size[1]-1)/2))
+y_range <- (center[2] - floor((size[2]-1)/2)):(center[2] + ceiling((size[2]-1)/2))
+z_range <- (center[3] - floor((size[3]-1)/2)):(center[3] + ceiling((size[3]-1)/2))
+
+cube_voxels <- expand.grid(x=x_range, y=y_range, z=z_range)
+
+for (i in 1:nrow(cube_voxels)) {
+  mask[cube_voxels$x[i], cube_voxels$y[i], cube_voxels$z[i]] <- 3
 }
 
 # Load in sample data file (from GNG task data, might need to update paths)
