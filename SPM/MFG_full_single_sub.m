@@ -14,19 +14,16 @@ n_inputs = 2;
 
 % Hypothesis connectivity indices
 % A: target, source
-A_idxs = [2,1;
-          1,2;
-          1,1;
+A_idxs = [1,1;
+          2,1;
           2,2];
 
 % B: input, target, source
-B_idxs = [2,2,1;
-          2,1,2;
-          2,1,1];
+B_idxs = [2,1,1;
+          2,2,1];
 
 % C: region, input
-C_idxs = [1,1;
-          2,1];
+C_idxs = [1,1];
 
 % Initialize DCM structure
 DCM = struct();
