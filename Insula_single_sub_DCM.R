@@ -51,13 +51,10 @@ canonical_dcm = cmdstanr::cmdstan_model("Canonical-DCM-Method/canonical_dcm.stan
 # Indices of parameters in hypothesis
 A_idxs <- matrix(c(1,1,
                    2,1,
-                   1,2,
                    2,2), byrow = T, ncol = 2)
 B_idxs <- matrix(c(2,1,1,
-                   2,2,1,
-                   2,1,2), byrow = T, ncol = 3)
-C_idxs <- matrix(c(1,1,
-                   2,1), byrow = T, ncol = 2)
+                   2,2,1), byrow = T, ncol = 3)
+C_idxs <- matrix(c(1,1), byrow = T, ncol = 2)
 
 idxs <- list(A_idxs = A_idxs,
              B_idxs = B_idxs,
