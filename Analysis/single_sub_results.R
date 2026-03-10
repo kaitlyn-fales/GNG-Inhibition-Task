@@ -80,13 +80,10 @@ for (i in 1:nrow(subject_sample)){
   # Indices of parameters
   A_idxs <- matrix(c(1,1,
                      2,1,
-                     1,2,
                      2,2), byrow = T, ncol = 2)
   B_idxs <- matrix(c(2,1,1,
-                     2,2,1,
-                     2,1,2), byrow = T, ncol = 3)
-  C_idxs <- matrix(c(1,1,
-                     2,1), byrow = T, ncol = 2)
+                     2,2,1), byrow = T, ncol = 3)
+  C_idxs <- matrix(c(1,1), byrow = T, ncol = 2)
   
   idxs <- list(A_idxs = A_idxs,
                B_idxs = B_idxs,
@@ -154,17 +151,17 @@ for (i in 1:nrow(subject_sample)){
     
     # Posterior means - MCMC
     MCMC_means <- filter(df, region_type == paste(combos$region[j],combos$VOI_type[j],sep = "_"))
-    nu_A = MCMC_means$mean[1:4]
-    nu_B = MCMC_means$mean[5:7]
-    nu_C = MCMC_means$mean[8:9]
+    nu_A = MCMC_means$mean[1:3]
+    nu_B = MCMC_means$mean[4:5]
+    nu_C = MCMC_means$mean[6]
     
     nu <- list(nu_A, nu_B, nu_C)
     
     # Initial value - MCMC
-    z0 <- MCMC_means$mean[10:11] 
+    z0 <- MCMC_means$mean[7:8] 
     
     # Constant shift beta - MCMC
-    beta <- MCMC_means$mean[12:13]
+    beta <- MCMC_means$mean[9:10]
     
     # Model params
     paramMats = struct_paramMats(m = m,n_u = n_u,idxs = idxs,nu = nu)
