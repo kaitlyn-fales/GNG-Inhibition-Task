@@ -233,11 +233,11 @@ for (i in 1:nreps){
     # Make as proper data objects and export
     y_obs_full <- cbind(MFG_VOI_full,PCC_VOI_full)
     dat <- list(times = times[-1], u = u[-1,], y_obs = y_obs_full, SNR = SNR)
-    save(dat, file = paste0("Simulation/Data/full_roi_snr",j,"_",i,".RData"))
+    save(dat, file = paste0("Simulation/Data_PCA/full_roi_snr",j,"_",i,".RData"))
     
     y_obs_thresh <- cbind(MFG_VOI_thresh,PCC_VOI_thresh)
     dat <- list(times = times[-1], u = u[-1,], y_obs = y_obs_thresh, SNR = SNR)
-    save(dat, file = paste0("Simulation/Data/thresh_roi_snr",j,"_",i,".RData"))
+    save(dat, file = paste0("Simulation/Data_PCA/thresh_roi_snr",j,"_",i,".RData"))
     
   }
   
