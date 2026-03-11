@@ -35,7 +35,7 @@ z0 <- rep(0.1,m)
 # Set vector of SNRs
 SNR_vals <- seq(0.1,2,length.out = 8)
 
-# Set pval threshold for the cherry picking task approach
+# Set pval threshold for the cherry picking task approach (one-sided)
 pval_thresh = 0.01
 ########################################################################
 
@@ -114,8 +114,13 @@ subjects <- c(110,111,120,121,124,128,134,143,152,160,171,172,173,181,
               184,196,199,214,215,223,227,230,247,252,256,258,265,266,268,
               271,275,276,277)
 
+# Global seed
+set.seed(12345)
+rep_seeds <- sample.int(1e7, nreps)
+
 for (i in 1:nreps){
-  set.seed(1234 + i)
+  
+  set.seed(rep_seeds[i])
   sub <- sample(subjects, 1)
   run <- sample(1:3, 1)
   
@@ -145,7 +150,18 @@ for (i in 1:nreps){
   # Hemodynamic model 
   y_signal = sapply(1:m, function(i) HRF_mu(out_z[-1,i],times[-1]))
   
+  # Generate voxel-specific scaling for replicate
+  scale_factors <- 0.3 + (1.3-0.3)*rbeta(nvoxel*2,2,3)
+  scale_factors_MFG <- scale_factors[1:100]
+  scale_factors_PCC <- scale_factors[101:200]
+  
+  # Seeds for reproducible noise
+  snr_seeds <- sample.int(1e7,length(SNR_vals))
+  
   for (j in 1:length(SNR_vals)){
+    
+    # Seed only affects noise
+    set.seed(rep_seeds[i] + snr_seeds[j])
     
     # Set SNR
     SNR = SNR_vals[j]
@@ -157,8 +173,7 @@ for (i in 1:nreps){
     for (k in 1:nvoxel){
       
       # Add dampening/amplification - mimic a wide variety of voxels
-      set.seed(123 * k)
-      scale_factor <- 0.3+(1.3-0.3)*rbeta(2,2,3)
+      scale_factor <- c(scale_factors_MFG[k],scale_factors_PCC[k])
       
       # Multiply the voxel signal by scale_factor (different for each voxel)
       y_scaled <- sweep(y_signal, MARGIN = 2, STATS = scale_factor, FUN = "*")
@@ -201,9 +216,9 @@ for (i in 1:nreps){
     task_result_MFG <- apply(MFG, 2, function(y) task_glm(y, inhibit_stim))
     task_result_PCC <- apply(PCC, 2, function(y) task_glm(y, inhibit_stim))
     
-    # Get task significant thresholded voxels 
-    sig_idx_MFG <- which(task_result_MFG[1,] > 0 & task_result_MFG[2,] < pval_thresh, arr.ind = T)
-    sig_idx_PCC <- which(task_result_PCC[1,] < 0 & task_result_PCC[2,] < pval_thresh, arr.ind = T) # task deactivate
+    # Get task significant thresholded voxels (one-sided test)
+    sig_idx_MFG <- which(task_result_MFG[1,] > 0 & task_result_MFG[2,]/2 < pval_thresh, arr.ind = T)
+    sig_idx_PCC <- which(task_result_PCC[1,] < 0 & task_result_PCC[2,]/2 < pval_thresh, arr.ind = T) # task deactivate
     
     # Get first PC for each ROI - full ROI approach using all voxels
     MFG_VOI_thresh <- get_BOLD_eigenvariate(MFG[,sig_idx_MFG])
