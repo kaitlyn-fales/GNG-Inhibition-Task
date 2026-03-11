@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=4gb
 #SBATCH --time=48:00:00
 #SBATCH --account=open
-#SBATCH --output=Output_PCA/output_thresh_%A_%a.out
+#SBATCH --output=Output_PCA/output_full_%A_%a.out
 #SBATCH --array=1-400
 
 # Get started
@@ -25,13 +25,13 @@ idx=$SLURM_ARRAY_TASK_ID
 snr=$(( (idx-1)/50 + 1 ))
 rep=$(( (idx-1)%50 + 1 ))
 
-file="/storage/work/krf5429/GNG-Inhibition-Task/Simulation/Data_PCA/thresh_roi_snr${snr}_${rep}.RData"
+file="/storage/work/krf5429/GNG-Inhibition-Task/Simulation/Data_PCA/full_roi_snr${snr}_${rep}.RData"
 
 echo "Array ID: $idx"
 echo "SNR: $snr  Replicate: $rep"
 echo "Processing $file"
 
-Rscript single_sub_DCM.R "$file"
+Rscript PCA_single_sub_DCM.R "$file"
 
 # Finish up
 echo " "

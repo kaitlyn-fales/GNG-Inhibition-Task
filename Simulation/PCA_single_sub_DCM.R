@@ -19,7 +19,7 @@ suppressPackageStartupMessages(library(momentLS))
 ######## Change specifications here ###########
 
 # Output specs
-output_dir <- "Output"
+output_dir <- "Output_PCA"
 basename <- tools::file_path_sans_ext(basename(data_file))
 
 # Source functions
