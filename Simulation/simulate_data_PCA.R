@@ -1,6 +1,7 @@
 # Packages
 library(deSolve)
 library(nlme)
+library(tidyverse)
 
 ############ Setting parameters #######################################
 # 2 nodes, 2 experimental inputs
@@ -150,6 +151,10 @@ for (i in 1:nreps){
   # Hemodynamic model 
   y_signal = sapply(1:m, function(i) HRF_mu(out_z[-1,i],times[-1]))
   
+  # Target signals
+  target_MFG <- y_signal[,1]
+  target_PCC <- y_signal[,2]
+  
   # Generate voxel-specific scaling for replicate
   scale_factors <- 0.3 + (1.3-0.3)*rbeta(nvoxel*2,2,3)
   scale_factors_MFG <- scale_factors[1:100]
@@ -206,6 +211,14 @@ for (i in 1:nreps){
     if(cor(PCC_VOI_full, u[-1,2]) > 0){
       PCC_VOI_full <- -PCC_VOI_full
     }
+    
+    # Extract pre-model quantities
+    # Pre-Stan metrics: PCA full ROI
+    cor_MFG_pca_full <- cor(MFG_VOI_full, target_MFG)
+    cor_PCC_pca_full <- cor(PCC_VOI_full, target_PCC)
+    
+    snr_eff_MFG_pca_full <- var(target_MFG) / var(MFG_VOI_full - target_MFG)
+    snr_eff_PCC_pca_full <- var(target_PCC) / var(PCC_VOI_full - target_PCC)
     ###
     
     ### Using the thresholded approach ###
@@ -220,6 +233,10 @@ for (i in 1:nreps){
     sig_idx_MFG <- which(task_result_MFG[1,] > 0 & task_result_MFG[2,]/2 < pval_thresh, arr.ind = T)
     sig_idx_PCC <- which(task_result_PCC[1,] < 0 & task_result_PCC[2,]/2 < pval_thresh, arr.ind = T) # task deactivate
     
+    # Proportion of voxels selected
+    prop_selected_MFG <- length(sig_idx_MFG) / nvoxel
+    prop_selected_PCC <- length(sig_idx_PCC) / nvoxel
+    
     # Get first PC for each ROI - full ROI approach using all voxels
     MFG_VOI_thresh <- get_BOLD_eigenvariate(MFG[,sig_idx_MFG])
     PCC_VOI_thresh <- get_BOLD_eigenvariate(PCC[,sig_idx_PCC]) 
@@ -228,6 +245,13 @@ for (i in 1:nreps){
     if(cor(PCC_VOI_thresh, u[-1,2]) > 0){
       PCC_VOI_thresh <- -PCC_VOI_thresh
     }
+    
+    # Pre-Stan metrics: PCA thresholded ROI
+    cor_MFG_pca_thresh <- cor(MFG_VOI_thresh, target_MFG)
+    cor_PCC_pca_thresh <- cor(PCC_VOI_thresh, target_PCC)
+    
+    snr_eff_MFG_pca_thresh <- var(target_MFG) / var(MFG_VOI_thresh - target_MFG)
+    snr_eff_PCC_pca_thresh <- var(target_PCC) / var(PCC_VOI_thresh - target_PCC)
     ###
     
     # Make as proper data objects and export
@@ -238,6 +262,31 @@ for (i in 1:nreps){
     y_obs_thresh <- cbind(MFG_VOI_thresh,PCC_VOI_thresh)
     dat <- list(times = times[-1], u = u[-1,], y_obs = y_obs_thresh, SNR = SNR)
     save(dat, file = paste0("Simulation/Data_PCA/thresh_roi_snr",j,"_",i,".RData"))
+    
+    # Save simulation metrics
+    metrics_dat <- list(
+      rep = i,
+      snr_index = j,
+      SNR = SNR,
+      sub = sub,
+      run = run,
+      
+      cor_MFG_pca_full = cor_MFG_pca_full,
+      cor_PCC_pca_full = cor_PCC_pca_full,
+      cor_MFG_pca_thresh = cor_MFG_pca_thresh,
+      cor_PCC_pca_thresh = cor_PCC_pca_thresh,
+      
+      snr_eff_MFG_pca_full = snr_eff_MFG_pca_full,
+      snr_eff_PCC_pca_full = snr_eff_PCC_pca_full,
+      snr_eff_MFG_pca_thresh = snr_eff_MFG_pca_thresh,
+      snr_eff_PCC_pca_thresh = snr_eff_PCC_pca_thresh,
+      
+      prop_selected_MFG = prop_selected_MFG,
+      prop_selected_PCC = prop_selected_PCC
+    )
+    
+    save(metrics_dat,
+         file = paste0("Simulation/Metrics/pca_metrics_snr", j, "_", i, ".RData"))
     
   }
   
