@@ -5,7 +5,7 @@ library(grid)
 library(gridExtra)
 library(cowplot)
 
-# Function for summarizing simulation results
+# Function for summarizing simulation results - NoAgg, OldHyp
 summarize_results <- function(dir,transform_idx,truth,par_names,
                               file_pattern = c("Type","NoType"),
                               type = c("full","thresh")){
@@ -85,6 +85,57 @@ summarize_results <- function(dir,transform_idx,truth,par_names,
     mutate(snr_val = SNR_vals[snr])
   
   return(summary_results)
+}
+
+# Function to summarize pre-estimation metrics from PCA/Mean aggregation
+read_metrics <- function(file_pattern, method_label, metrics_dir = "Simulation/Metrics") {
+  
+  files <- list.files(
+    path = metrics_dir,
+    pattern = file_pattern,
+    full.names = TRUE
+  )
+  
+  df <- map_dfr(files, load_metrics_file) %>%
+    mutate(method = method_label)
+  
+  long_df <- df %>%
+    pivot_longer(
+      cols = -c(rep, snr_index, SNR, sub, run, method),
+      names_to = "metric_name",
+      values_to = "value"
+    ) %>%
+    mutate(
+      roi = case_when(
+        str_detect(metric_name, "MFG") ~ "MFG",
+        str_detect(metric_name, "PCC") ~ "PCC",
+        TRUE ~ NA_character_
+      ),
+      scope = case_when(
+        str_detect(metric_name, "full") ~ "Full",
+        str_detect(metric_name, "thresh") ~ "Thresholded",
+        str_detect(metric_name, "selected") ~ "Thresholded",
+        TRUE ~ NA_character_
+      ),
+      metric = case_when(
+        str_detect(metric_name, "^cor_") ~ "Signal recovery",
+        str_detect(metric_name, "^snr_eff_") ~ "Effective ROI SNR",
+        str_detect(metric_name, "^prop_selected") ~ "Proportion selected",
+        TRUE ~ metric_name
+      )
+    )
+  
+  summary_df <- long_df %>%
+    group_by(method, SNR, metric, scope, roi) %>%
+    summarise(
+      mean_value = mean(value, na.rm = TRUE),
+      sd_value = sd(value, na.rm = TRUE),
+      n = sum(!is.na(value)),
+      se_value = sd_value / sqrt(n),
+      .groups = "drop"
+    )
+  
+  list(raw = df, long = long_df, summary = summary_df)
 }
 
 ######### Results for original hypothesis (OldHyp) #########
@@ -234,7 +285,7 @@ grid.arrange(
 
 ############################################################
 
-rm(list = setdiff(ls(), "summarize_results"))
+rm(list = setdiff(ls(), c("summarize_results","read_metrics")))
 
 ##### Results for revised hyp, no aggregation (NoAgg) ######
 # Parameter names to extract
@@ -384,586 +435,23 @@ grid.arrange(
 
 ############################################################
 
-rm(list = setdiff(ls(), "summarize_results"))
+rm(list = setdiff(ls(), "read_metrics"))
 
-############## Results for PCA aggregation #################
+############## Results for PCA/Mean aggregation #################
+# Analyze pre-estimation metrics
+pca_out  <- read_metrics("^pca_metrics_snr[0-9]+_[0-9]+\\.RData$", "PCA")
+mean_out <- read_metrics("^mean_metrics_snr[0-9]+_[0-9]+\\.RData$", "Mean")
+
+all_metrics_long <- bind_rows(pca_out$long, mean_out$long)
+all_metrics_summary <- bind_rows(pca_out$summary, mean_out$summary)
+
 # Parameter names to extract
 param_names <- c("nu_A[1]","nu_A[2]","nu_A[3]","nu_B[1]","nu_B[2]","nu_C[1]")
 
 # Set of true values from simulation
 true_vals <- c(-0.5*exp(0.1),-0.3,-0.5*exp(0.05),0.15,-0.1,0.9)
 
-# Summarize simulation results - using full ROI approach
-summary_PCA_full <- summarize_results(dir = "Simulation/Output_PCA",
-                                      transform_idx = c(4,6),
-                                      truth = true_vals,
-                                      par_names = param_names,
-                                      file_pattern = "Type",
-                                      type = "full")
-
-# Fixed color palette for parameters
-desired_order <- c(
-  "nu_A[1]", "nu_B[1]", "nu_A[2]", "nu_B[2]",
-  "nu_A[3]", "nu_C[1]"
-)
-
-summary_PCA_full <- summary_PCA_full %>%
-  mutate(param = factor(param, levels = desired_order))
-
-# Fixed color palette for parameters
-param_colors <- RColorBrewer::brewer.pal(6, "Paired")  # your first 6 colors
-# pick extra colors from larger palette
-extra_colors <- RColorBrewer::brewer.pal(12, "Paired")[c(8,10)]
-param_colors <- c(param_colors[1:4], extra_colors)
-names(param_colors) <- desired_order
-
-point_shapes <- c(16,17,16,17,16,15)
-
-# Coverage
-p1 <- summary_PCA_full %>%
-  ggplot(aes(x = snr_val, y = coverage, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(
-    name = "Parameter",
-    values = param_colors,
-    labels = c(
-      "MFG (Self)","Inhibition -> MFG (Self)", "MFG -> PCC", "Inhibition -> (MFG -> PCC)",
-      "PCC (Self)","GNG Task -> MFG"
-    )
-  ) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Coverage",
-       x = "",
-       y = "") +
-  guides(
-    color = guide_legend(
-      nrow = 2,
-      byrow = TRUE,
-      override.aes = list(
-        shape = point_shapes,
-        size = 3,
-        linewidth = 1
-      )
-    ),
-    linetype = "none",
-    shape = "none"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Interval Length
-p2 <- summary_PCA_full %>%
-  ggplot(aes(x = snr_val, y = mean_interval, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0, 3.2) +
-  labs(title = "Interval Length",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p3 <- summary_PCA_full %>%
-  ggplot(aes(x = snr_val, y = mean_bias, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(-1,1) +
-  labs(title = "Bias",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p4 <- summary_PCA_full %>%
-  ggplot(aes(x = snr_val, y = prop_correct_sign, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Proportion of Correct Sign",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Extract legend and plot all 
-common_legend <- cowplot::get_legend(
-  p1 +
-    theme(legend.position = "right") +
-    guides(
-      color = guide_legend(
-        nrow = 2, byrow = TRUE,
-        override.aes = list(
-          shape = point_shapes,
-          size = 3,
-          linewidth = 1
-        )
-      ),
-      linetype = "none",
-      shape = "none"
-    )
-)
-legend_grob <- arrangeGrob(common_legend)
-plots_without_legends <- list(
-  p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
-  p3 + theme(legend.position = "none"),
-  p4 + theme(legend.position = "none")
-)
-plot_grid <- arrangeGrob(
-  grobs = plots_without_legends,
-  ncol = 2, nrow = 2,
-  top = textGrob("Full ROI, Summarized Using PCA",
-                 gp = gpar(fontface = "bold", fontsize = 16)),
-  bottom = textGrob("Voxelwise Signal-to-Noise Ratio (SNR)", gp = gpar(fontface = "bold", fontsize = 12))
-)
-grid.arrange(
-  plot_grid,
-  legend_grob,
-  ncol = 1,
-  heights = c(10, 1.2)
-)
-
-# Summarize simulation results - using thresholded ROI approach
-summary_PCA_thresh <- summarize_results(dir = "Simulation/Output_PCA",
-                                        transform_idx = c(4,6),
-                                        truth = true_vals,
-                                        par_names = param_names,
-                                        file_pattern = "Type",
-                                        type = "thresh")
-
-# Fixed color palette for parameters
-desired_order <- c(
-  "nu_A[1]", "nu_B[1]", "nu_A[2]", "nu_B[2]",
-  "nu_A[3]", "nu_C[1]"
-)
-
-summary_PCA_thresh <- summary_PCA_thresh %>%
-  mutate(param = factor(param, levels = desired_order))
-
-# Fixed color palette for parameters
-param_colors <- RColorBrewer::brewer.pal(6, "Paired")  # your first 6 colors
-# pick extra colors from larger palette
-extra_colors <- RColorBrewer::brewer.pal(12, "Paired")[c(8,10)]
-param_colors <- c(param_colors[1:4], extra_colors)
-names(param_colors) <- desired_order
-
-point_shapes <- c(16,17,16,17,16,15)
-
-# Coverage
-p1 <- summary_PCA_thresh %>%
-  ggplot(aes(x = snr_val, y = coverage, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(
-    name = "Parameter",
-    values = param_colors,
-    labels = c(
-      "MFG (Self)","Inhibition -> MFG (Self)", "MFG -> PCC", "Inhibition -> (MFG -> PCC)",
-      "PCC (Self)","GNG Task -> MFG"
-    )
-  ) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Coverage",
-       x = "",
-       y = "") +
-  guides(
-    color = guide_legend(
-      nrow = 2,
-      byrow = TRUE,
-      override.aes = list(
-        shape = point_shapes,
-        size = 3,
-        linewidth = 1
-      )
-    ),
-    linetype = "none",
-    shape = "none"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Interval Length
-p2 <- summary_PCA_thresh %>%
-  ggplot(aes(x = snr_val, y = mean_interval, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0, 3.2) +
-  labs(title = "Interval Length",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p3 <- summary_PCA_thresh %>%
-  ggplot(aes(x = snr_val, y = mean_bias, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(-1,1) +
-  labs(title = "Bias",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p4 <- summary_PCA_thresh %>%
-  ggplot(aes(x = snr_val, y = prop_correct_sign, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Proportion of Correct Sign",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Extract legend and plot all 
-common_legend <- cowplot::get_legend(
-  p1 +
-    theme(legend.position = "right") +
-    guides(
-      color = guide_legend(
-        nrow = 2, byrow = TRUE,
-        override.aes = list(
-          shape = point_shapes,
-          size = 3,
-          linewidth = 1
-        )
-      ),
-      linetype = "none",
-      shape = "none"
-    )
-)
-legend_grob <- arrangeGrob(common_legend)
-plots_without_legends <- list(
-  p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
-  p3 + theme(legend.position = "none"),
-  p4 + theme(legend.position = "none")
-)
-plot_grid <- arrangeGrob(
-  grobs = plots_without_legends,
-  ncol = 2, nrow = 2,
-  top = textGrob("GLM Thresholded ROI, Summarized Using PCA",
-                 gp = gpar(fontface = "bold", fontsize = 16)),
-  bottom = textGrob("Voxelwise Signal-to-Noise Ratio (SNR)", gp = gpar(fontface = "bold", fontsize = 12))
-)
-grid.arrange(
-  plot_grid,
-  legend_grob,
-  ncol = 1,
-  heights = c(10, 1.2)
-)
-
-############################################################
-
-rm(list = setdiff(ls(), "summarize_results"))
-
-############## Results for Mean aggregation #################
-# Parameter names to extract
-param_names <- c("nu_A[1]","nu_A[2]","nu_A[3]","nu_B[1]","nu_B[2]","nu_C[1]")
-
-# Set of true values from simulation
-true_vals <- c(-0.5*exp(0.1),-0.3,-0.5*exp(0.05),0.15,-0.1,0.9)
-
-# Summarize simulation results - using full ROI approach
-summary_Mean_full <- summarize_results(dir = "Simulation/Output_Mean",
-                                       transform_idx = c(4,6),
-                                       truth = true_vals,
-                                       par_names = param_names,
-                                       file_pattern = "Type",
-                                       type = "full")
-
-# Fixed color palette for parameters
-desired_order <- c(
-  "nu_A[1]", "nu_B[1]", "nu_A[2]", "nu_B[2]",
-  "nu_A[3]", "nu_C[1]"
-)
-
-summary_Mean_full <- summary_Mean_full %>%
-  mutate(param = factor(param, levels = desired_order))
-
-# Fixed color palette for parameters
-param_colors <- RColorBrewer::brewer.pal(6, "Paired")  # your first 6 colors
-# pick extra colors from larger palette
-extra_colors <- RColorBrewer::brewer.pal(12, "Paired")[c(8,10)]
-param_colors <- c(param_colors[1:4], extra_colors)
-names(param_colors) <- desired_order
-
-point_shapes <- c(16,17,16,17,16,15)
-
-# Coverage
-p1 <- summary_Mean_full %>%
-  ggplot(aes(x = snr_val, y = coverage, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(
-    name = "Parameter",
-    values = param_colors,
-    labels = c(
-      "MFG (Self)","Inhibition -> MFG (Self)", "MFG -> PCC", "Inhibition -> (MFG -> PCC)",
-      "PCC (Self)","GNG Task -> MFG"
-    )
-  ) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Coverage",
-       x = "",
-       y = "") +
-  guides(
-    color = guide_legend(
-      nrow = 2,
-      byrow = TRUE,
-      override.aes = list(
-        shape = point_shapes,
-        size = 3,
-        linewidth = 1
-      )
-    ),
-    linetype = "none",
-    shape = "none"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Interval Length
-p2 <- summary_Mean_full %>%
-  ggplot(aes(x = snr_val, y = mean_interval, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0, 3.2) +
-  labs(title = "Interval Length",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p3 <- summary_Mean_full %>%
-  ggplot(aes(x = snr_val, y = mean_bias, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(-1,1) +
-  labs(title = "Bias",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p4 <- summary_Mean_full %>%
-  ggplot(aes(x = snr_val, y = prop_correct_sign, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Proportion of Correct Sign",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Extract legend and plot all 
-common_legend <- cowplot::get_legend(
-  p1 +
-    theme(legend.position = "right") +
-    guides(
-      color = guide_legend(
-        nrow = 2, byrow = TRUE,
-        override.aes = list(
-          shape = point_shapes,
-          size = 3,
-          linewidth = 1
-        )
-      ),
-      linetype = "none",
-      shape = "none"
-    )
-)
-legend_grob <- arrangeGrob(common_legend)
-plots_without_legends <- list(
-  p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
-  p3 + theme(legend.position = "none"),
-  p4 + theme(legend.position = "none")
-)
-plot_grid <- arrangeGrob(
-  grobs = plots_without_legends,
-  ncol = 2, nrow = 2,
-  top = textGrob("Full ROI, Summarized Using the Mean",
-                 gp = gpar(fontface = "bold", fontsize = 16)),
-  bottom = textGrob("Voxelwise Signal-to-Noise Ratio (SNR)", gp = gpar(fontface = "bold", fontsize = 12))
-)
-grid.arrange(
-  plot_grid,
-  legend_grob,
-  ncol = 1,
-  heights = c(10, 1.2)
-)
-
-
-# Summarize simulation results - using thresholded ROI approach
-summary_Mean_thresh <- summarize_results(dir = "Simulation/Output_Mean",
-                                         transform_idx = c(4,6),
-                                         truth = true_vals,
-                                         par_names = param_names,
-                                         file_pattern = "Type",
-                                         type = "thresh")
-
-# Fixed color palette for parameters
-desired_order <- c(
-  "nu_A[1]", "nu_B[1]", "nu_A[2]", "nu_B[2]",
-  "nu_A[3]", "nu_C[1]"
-)
-
-summary_Mean_thresh <- summary_Mean_thresh %>%
-  mutate(param = factor(param, levels = desired_order))
-
-# Fixed color palette for parameters
-param_colors <- RColorBrewer::brewer.pal(6, "Paired")  # your first 6 colors
-# pick extra colors from larger palette
-extra_colors <- RColorBrewer::brewer.pal(12, "Paired")[c(8,10)]
-param_colors <- c(param_colors[1:4], extra_colors)
-names(param_colors) <- desired_order
-
-point_shapes <- c(16,17,16,17,16,15)
-
-# Coverage
-p1 <- summary_Mean_thresh %>%
-  ggplot(aes(x = snr_val, y = coverage, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(
-    name = "Parameter",
-    values = param_colors,
-    labels = c(
-      "MFG (Self)","Inhibition -> MFG (Self)", "MFG -> PCC", "Inhibition -> (MFG -> PCC)",
-      "PCC (Self)","GNG Task -> MFG"
-    )
-  ) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Coverage",
-       x = "",
-       y = "") +
-  guides(
-    color = guide_legend(
-      nrow = 2,
-      byrow = TRUE,
-      override.aes = list(
-        shape = point_shapes,
-        size = 3,
-        linewidth = 1
-      )
-    ),
-    linetype = "none",
-    shape = "none"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Interval Length
-p2 <- summary_Mean_thresh %>%
-  ggplot(aes(x = snr_val, y = mean_interval, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0, 3.2) +
-  labs(title = "Interval Length",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p3 <- summary_Mean_thresh %>%
-  ggplot(aes(x = snr_val, y = mean_bias, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(-1,1) +
-  labs(title = "Bias",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Bias
-p4 <- summary_Mean_thresh %>%
-  ggplot(aes(x = snr_val, y = prop_correct_sign, color = param, shape = param)) +
-  geom_line(linewidth = 1) +
-  geom_point(size=3) +
-  scale_color_manual(values = param_colors) +
-  scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
-  labs(title = "Proportion of Correct Sign",
-       x = "",
-       y = "") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-# Extract legend and plot all 
-common_legend <- cowplot::get_legend(
-  p1 +
-    theme(legend.position = "right") +
-    guides(
-      color = guide_legend(
-        nrow = 2, byrow = TRUE,
-        override.aes = list(
-          shape = point_shapes,
-          size = 3,
-          linewidth = 1
-        )
-      ),
-      linetype = "none",
-      shape = "none"
-    )
-)
-legend_grob <- arrangeGrob(common_legend)
-plots_without_legends <- list(
-  p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
-  p3 + theme(legend.position = "none"),
-  p4 + theme(legend.position = "none")
-)
-plot_grid <- arrangeGrob(
-  grobs = plots_without_legends,
-  ncol = 2, nrow = 2,
-  top = textGrob("GLM Thresholded ROI, Summarized Using the Mean",
-                 gp = gpar(fontface = "bold", fontsize = 16)),
-  bottom = textGrob("Voxelwise Signal-to-Noise Ratio (SNR)", gp = gpar(fontface = "bold", fontsize = 12))
-)
-grid.arrange(
-  plot_grid,
-  legend_grob,
-  ncol = 1,
-  heights = c(10, 1.2)
-)
+# add plotting and analysis of post-estimation metrics
 
 ############################################################
 
