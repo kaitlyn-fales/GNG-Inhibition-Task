@@ -19,8 +19,14 @@ suppressPackageStartupMessages(library(momentLS))
 ######## Change specifications here ###########
 
 # Output specs
-output_dir <- "Output_Mean"
-basename <- tools::file_path_sans_ext(basename(data_file))
+file_base <- basename(data_file)
+
+dist <- sub("_(full|thresh)_roi_snr[0-9]+_[0-9]+\\.RData$", "", file_base)
+
+output_dir <- file.path("Output_Mean", dist)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+basename <- tools::file_path_sans_ext(file_base)
 
 # Source functions
 source("../Canonical-DCM-Method/canonical_dcm_functions.R")
