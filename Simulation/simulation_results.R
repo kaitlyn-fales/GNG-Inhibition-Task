@@ -111,7 +111,6 @@ load_metrics_file <- function(file_path) {
   e <- new.env()
   load(file_path, envir = e)
   
-  # Get the object inside the .RData file
   obj_name <- ls(e)
   
   if (length(obj_name) != 1) {
@@ -119,8 +118,6 @@ load_metrics_file <- function(file_path) {
   }
   
   df <- e[[obj_name]]
-  
-  # Ensure it's a data frame / tibble
   df <- as.data.frame(df)
   
   return(df)
@@ -135,12 +132,18 @@ read_metrics <- function(file_pattern, method_label, metrics_dir = "Simulation/M
     full.names = TRUE
   )
   
-  df <- map_dfr(files, load_metrics_file) %>%
+  df <- map_dfr(files, function(f) {
+    out <- load_metrics_file(f)
+    
+    # Extract full distribution label from filename
+    out$dist <- sub("_(pca|mean)_metrics_snr[0-9]+_[0-9]+\\.RData$", "", basename(f))
+    out
+  }) %>%
     mutate(method = method_label)
   
   long_df <- df %>%
     pivot_longer(
-      cols = -c(rep, snr_index, SNR, sub, run, method),
+      cols = -c(rep, snr_index, SNR, sub, run, method, dist),
       names_to = "metric_name",
       values_to = "value"
     ) %>%
@@ -165,7 +168,7 @@ read_metrics <- function(file_pattern, method_label, metrics_dir = "Simulation/M
     )
   
   summary_df <- long_df %>%
-    group_by(method, SNR, metric, scope, roi) %>%
+    group_by(dist, method, SNR, metric, scope, roi) %>%
     summarise(
       mean_value = mean(value, na.rm = TRUE),
       sd_value = sd(value, na.rm = TRUE),
@@ -498,136 +501,195 @@ rm(list = setdiff(ls(), c("summarize_results","read_metrics","load_metrics_file"
 
 ############## Results for PCA/Mean aggregation #################
 # Analyze pre-estimation metrics
-pca_out  <- read_metrics("^pca_metrics_snr[0-9]+_[0-9]+\\.RData$", "PCA")
-mean_out <- read_metrics("^mean_metrics_snr[0-9]+_[0-9]+\\.RData$", "Mean")
+pca_out  <- read_metrics("^beta_.*_pca_metrics_snr[0-9]+_[0-9]+\\.RData$", "PCA")
+mean_out <- read_metrics("^beta_.*_mean_metrics_snr[0-9]+_[0-9]+\\.RData$", "Mean")
 
 all_metrics_long <- bind_rows(pca_out$long, mean_out$long)
 all_metrics_summary <- bind_rows(pca_out$summary, mean_out$summary)
 
+dist_labels <- c(
+  beta_sym = "Symmetric scaling",
+  beta_u   = "U-shaped scaling"
+)
+
 paired_cols <- brewer.pal(10, "Paired")[c(4, 10)]
 names(paired_cols) <- c("PCA", "Mean")
-
-plot_main <- all_metrics_summary %>%
-  filter(metric %in% c("Signal recovery", "Effective ROI SNR")) %>%
-  mutate(
-    metric = factor(metric, levels = c("Signal recovery", "Effective ROI SNR")),
-    scope  = factor(scope, levels = c("Full", "Thresholded")),
-    method = factor(method, levels = c("PCA", "Mean")),
-    roi    = factor(roi, levels = c("MFG", "PCC"))
-  ) %>%
-  ggplot(aes(x = SNR, y = mean_value,
-             color = method,
-             linetype = scope,
-             group = interaction(method, scope))) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 1.5) +
-  geom_errorbar(aes(ymin = mean_value - se_value,
-                    ymax = mean_value + se_value),
-                width = 0.05,
-                linewidth = 0.5, linetype = "solid") +
-  facet_grid(metric ~ roi, scales = "free_y") +
-  scale_color_manual(values = paired_cols) +
-  scale_linetype_manual(values = c("solid", "dashed")) +
-  labs(
-    title = "Pre-Estimation Performance by ROI Approach and Summary Method",
-    x = NULL,
-    y = NULL,
-    color = "Summary",
-    linetype = "ROI approach"
-  ) +
-  theme_bw(base_size = 12) +
-  theme(
-    plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
-    axis.text = element_text(face = "bold", size = 11),
-    axis.title = element_text(face = "bold", size = 13),
-    strip.text = element_text(face = "bold", size = 12),
-    strip.background = element_rect(fill = "white"),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.box = "horizontal",
-    legend.title = element_text(face = "bold", size = 11),
-    legend.text = element_text(size = 10)
-  ) +
-  guides(
-    color = guide_legend(nrow = 1, byrow = TRUE, order = 1),
-    linetype = guide_legend(nrow = 1, byrow = TRUE, order = 2)
-  )
-
 
 roi_cols <- brewer.pal(6, "Paired")[c(2, 6)]
 names(roi_cols) <- c("MFG", "PCC")
 
-plot_prop2 <- all_metrics_summary %>%
-  filter(metric == "Proportion selected",
-         scope == "Thresholded",
-         method == "PCA") %>%
-  mutate(
-    roi = factor(roi, levels = c("MFG", "PCC"))
-  ) %>%
-  ggplot(aes(x = SNR, y = mean_value,
-             color = roi, group = roi)) +
-  geom_line(linewidth = 0.7, linetype = "dashed") +
-  geom_point(size = 1.5) +
-  geom_errorbar(aes(ymin = mean_value - se_value,
-                    ymax = mean_value + se_value),
-                width = 0.05,
-                linewidth = 0.5, linetype = "solid") +
-  scale_color_manual(values = roi_cols) +
-  scale_y_continuous(limits = c(0, 1)) +
-  labs(
-    x = "Voxelwise Signal-to-Noise Ratio (SNR)",
-    y = NULL,
-    title = "Proportion of Voxels Selected",
-    color = "ROI"
-  ) +
-  theme_bw(base_size = 12) +
-  theme(
-    plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
-    axis.text = element_text(face = "bold", size = 11),
-    axis.title = element_text(face = "bold", size = 13),
-    strip.text = element_text(face = "bold", size = 12),
-    strip.background = element_rect(fill = "white"),
-    legend.title = element_text(face = "bold", size = 11),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom"
-  ) +
-  guides(
-    color = guide_legend(nrow = 1)
-  )
+make_main_plot <- function(dat, dist_label) {
+  dat %>%
+    filter(
+      metric %in% c("Signal recovery", "Effective ROI SNR"),
+      dist == dist_label
+    ) %>%
+    mutate(
+      metric = factor(metric, levels = c("Signal recovery", "Effective ROI SNR")),
+      scope  = factor(scope, levels = c("Full", "Thresholded")),
+      method = factor(method, levels = c("PCA", "Mean")),
+      roi    = factor(roi, levels = c("MFG", "PCC"))
+    ) %>%
+    ggplot(aes(
+      x = SNR,
+      y = mean_value,
+      color = method,
+      linetype = scope,
+      group = interaction(method, scope)
+    )) +
+    geom_line(linewidth = 0.7) +
+    geom_point(size = 1.5) +
+    geom_errorbar(
+      aes(ymin = mean_value - se_value,
+          ymax = mean_value + se_value),
+      width = 0.05,
+      linewidth = 0.5,
+      linetype = "solid"
+    ) +
+    facet_grid(metric ~ roi, scales = "free_y") +
+    scale_color_manual(values = paired_cols) +
+    scale_linetype_manual(values = c("solid", "dashed")) +
+    labs(
+      title = paste("Pre-Estimation Performance by ROI Approach and Summary Method -",
+                    dist_labels[dist_label]),
+      x = NULL,
+      y = NULL,
+      color = "Summary",
+      linetype = "ROI approach"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+      axis.text = element_text(face = "bold", size = 11),
+      axis.title = element_text(face = "bold", size = 13),
+      strip.text = element_text(face = "bold", size = 12),
+      strip.background = element_rect(fill = "white"),
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.box = "horizontal",
+      legend.title = element_text(face = "bold", size = 11),
+      legend.text = element_text(size = 10)
+    ) +
+    guides(
+      color = guide_legend(nrow = 1, byrow = TRUE, order = 1),
+      linetype = guide_legend(nrow = 1, byrow = TRUE, order = 2)
+    )
+}
 
-# Extract main legend (method + scope)
-main_legend <- get_legend(
-  plot_main + theme(legend.position = "right")
+make_prop_plot <- function(dat, dist_label) {
+  dat %>%
+    filter(
+      metric == "Proportion selected",
+      scope == "Thresholded",
+      method == "PCA",
+      dist == dist_label
+    ) %>%
+    mutate(
+      roi = factor(roi, levels = c("MFG", "PCC"))
+    ) %>%
+    ggplot(aes(
+      x = SNR,
+      y = mean_value,
+      color = roi,
+      group = roi
+    )) +
+    geom_line(linewidth = 0.7, linetype = "dashed") +
+    geom_point(size = 1.5) +
+    geom_errorbar(
+      aes(ymin = mean_value - se_value,
+          ymax = mean_value + se_value),
+      width = 0.05,
+      linewidth = 0.5,
+      linetype = "solid"
+    ) +
+    scale_color_manual(values = roi_cols) +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(
+      x = "Voxelwise Signal-to-Noise Ratio (SNR)",
+      y = NULL,
+      title = paste("Proportion of Voxels Selected -", dist_labels[dist_label]),
+      color = "ROI"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
+      axis.text = element_text(face = "bold", size = 11),
+      axis.title = element_text(face = "bold", size = 13),
+      strip.text = element_text(face = "bold", size = 12),
+      strip.background = element_rect(fill = "white"),
+      legend.title = element_text(face = "bold", size = 11),
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom"
+    ) +
+    guides(
+      color = guide_legend(nrow = 1)
+    )
+}
+
+# Symmetric scaling plot
+plot_main_sym <- make_main_plot(all_metrics_summary, "beta_sym")
+plot_prop_sym <- make_prop_plot(all_metrics_summary, "beta_sym")
+
+main_legend_sym <- get_legend(
+  plot_main_sym + theme(legend.position = "right")
 )
 
-# Extract ROI legend
-prop_legend <- get_legend(
-  plot_prop2 + theme(legend.position = "right")
+prop_legend_sym <- get_legend(
+  plot_prop_sym + theme(legend.position = "right")
 )
 
-plot_main_nolegend <- plot_main +
-  theme(legend.position = "none")
+plot_main_sym_nolegend <- plot_main_sym + theme(legend.position = "none")
+plot_prop_sym_nolegend <- plot_prop_sym + theme(legend.position = "none")
 
-plot_prop_nolegend <- plot_prop2 +
-  theme(legend.position = "none")
-
-
-combined_legend <- plot_grid(
-  main_legend,
-  prop_legend,
+combined_legend_sym <- plot_grid(
+  main_legend_sym,
+  prop_legend_sym,
   nrow = 1,
-  rel_widths = c(1.4, 1)  
+  rel_widths = c(1.4, 1)
 )
 
-final_pre_plot <- plot_grid(
-  plot_main_nolegend,
-  plot_prop_nolegend,
-  combined_legend,
+final_pre_plot_sym <- plot_grid(
+  plot_main_sym_nolegend,
+  plot_prop_sym_nolegend,
+  combined_legend_sym,
   ncol = 1,
   rel_heights = c(2.8, 1.4, 0.4)
 )
 
-final_pre_plot
+final_pre_plot_sym
+
+
+# U-shaped scaling plot
+plot_main_u <- make_main_plot(all_metrics_summary, "beta_u")
+plot_prop_u <- make_prop_plot(all_metrics_summary, "beta_u")
+
+main_legend_u <- get_legend(
+  plot_main_u + theme(legend.position = "right")
+)
+
+prop_legend_u <- get_legend(
+  plot_prop_u + theme(legend.position = "right")
+)
+
+plot_main_u_nolegend <- plot_main_u + theme(legend.position = "none")
+plot_prop_u_nolegend <- plot_prop_u + theme(legend.position = "none")
+
+combined_legend_u <- plot_grid(
+  main_legend_u,
+  prop_legend_u,
+  nrow = 1,
+  rel_widths = c(1.4, 1)
+)
+
+final_pre_plot_u <- plot_grid(
+  plot_main_u_nolegend,
+  plot_prop_u_nolegend,
+  combined_legend_u,
+  ncol = 1,
+  rel_heights = c(2.8, 1.4, 0.4)
+)
+
+final_pre_plot_u
 
 # Clear environment
 rm(list = setdiff(ls(), c("summarize_results","read_metrics","load_metrics_file")))
