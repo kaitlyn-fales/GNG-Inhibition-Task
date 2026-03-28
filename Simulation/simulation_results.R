@@ -756,7 +756,7 @@ p1 <- summary_PCA_full %>%
     )
   ) +
   scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
+  ylim(0,1.2) +
   labs(title = "Full ROI",
        x = NULL,
        y = "Interval Length") +
@@ -805,7 +805,7 @@ p3 <- summary_PCA_thresh %>%
   scale_color_manual(
     values = param_colors) +
   scale_shape_manual(values = point_shapes) +
-  ylim(0,1) +
+  ylim(0,1.2) +
   labs(title = "GLM Thresholded ROI",
        x = NULL,
        y = "Interval Length") +
