@@ -2,6 +2,11 @@
 library(posterior)
 library(dplyr)
 library(tibble)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(stringr)
+library(patchwork)
 
 # Number of parameters in group level model of interest
 p <- 6
@@ -148,3 +153,259 @@ CDCM_Insula_thresh <- list(
   run3 = Insula_thresh_run3
 )
 
+rm(list = setdiff(ls(), c("CDCM_MFG_full","CDCM_MFG_thresh","CDCM_Insula_full","CDCM_Insula_thresh")))
+
+# Plotting
+all_models <- list(
+  MFG_Full = CDCM_MFG_full,
+  MFG_Thresh = CDCM_MFG_thresh,
+  Insula_Full = CDCM_Insula_full,
+  Insula_Thresh = CDCM_Insula_thresh
+)
+
+# Parameters to keep (drop self loops A1 and A3)
+params_keep <- c("nu_A[2]", "nu_B[1]", "nu_B[2]", "nu_C[1]")
+
+# Functions to extract baseline connectivity and FTND
+extract_baseline <- function(model_obj, roi_name) {
+  map_dfr(c("run1", "run2", "run3"), function(run_name) {
+    model_obj[[run_name]]$alpha_tau %>%
+      filter(parameter %in% params_keep) %>%
+      transmute(
+        roi = roi_name,
+        run = factor(
+          run_name,
+          levels = c("run1", "run2", "run3"),
+          labels = c("Run 1", "Run 2", "Run 3")
+        ),
+        parameter,
+        mean  = mean_alpha,
+        lower = q2.5_alpha,
+        upper = q97.5_alpha
+      )
+  })
+}
+
+extract_ftnd <- function(model_obj, roi_name) {
+  map_dfr(c("run1", "run2", "run3"), function(run_name) {
+    model_obj[[run_name]]$B_subj %>%
+      filter(covariate == "ftnd_std", parameter %in% params_keep) %>%
+      transmute(
+        roi = roi_name,
+        run = factor(
+          run_name,
+          levels = c("run1", "run2", "run3"),
+          labels = c("Run 1", "Run 2", "Run 3")
+        ),
+        parameter,
+        mean  = mean,
+        lower = q2.5,
+        upper = q97.5
+      )
+  })
+}
+
+# Build datasets
+baseline_df <- imap_dfr(all_models, extract_baseline)
+ftnd_df     <- imap_dfr(all_models, extract_ftnd)
+
+add_plot_metadata <- function(df) {
+  df %>%
+    mutate(
+      region = case_when(
+        str_detect(roi, "^MFG")    ~ "MFG",
+        str_detect(roi, "^Insula") ~ "Insula",
+        TRUE ~ NA_character_
+      ),
+      roi_type = case_when(
+        str_detect(roi, "Full")      ~ "Full ROI",
+        str_detect(roi, "Thresh") ~ "Thresholded ROI",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    mutate(
+      parameter_label = case_when(
+        parameter == "nu_A[2]" ~ paste0(region, " \u2192 PCC"),
+        parameter == "nu_B[1]" ~ paste0("Inhibition \u2192 ", region, " (Self)"),
+        parameter == "nu_B[2]" ~ paste0("Inhibition \u2192 (", region, " \u2192 PCC)"),
+        parameter == "nu_C[1]" ~ paste0("GNG Task \u2192 ", region),
+        TRUE ~ parameter
+      ),
+      parameter_label = factor(
+        parameter_label,
+        levels = c(
+          "MFG \u2192 PCC",
+          "Inhibition \u2192 MFG (Self)",
+          "Inhibition \u2192 (MFG \u2192 PCC)",
+          "GNG Task \u2192 MFG",
+          "Insula \u2192 PCC",
+          "Inhibition \u2192 Insula (Self)",
+          "Inhibition \u2192 (Insula \u2192 PCC)",
+          "GNG Task \u2192 Insula"
+        )
+      )
+    )
+}
+
+baseline_df2 <- add_plot_metadata(baseline_df) %>%
+  mutate(estimate_type = "Run")
+ftnd_df2     <- add_plot_metadata(ftnd_df) %>%
+  mutate(estimate_type = "Run")
+
+# Load in run-pooled results and format accordingly
+load("Analysis/Results/CDCM_results.RData")
+all_pooled_models <- list(
+  MFG_Full         = CDCM_results$MFG_full,
+  MFG_Threshold    = CDCM_results$MFG_thresh,
+  Insula_Full      = CDCM_results$Insula_full,
+  Insula_Threshold = CDCM_results$Insula_thresh
+)
+
+extract_pooled_baseline <- function(model_obj, roi_name) {
+  model_obj$alpha_tau %>%
+    filter(parameter %in% params_keep) %>%
+    transmute(
+      roi = roi_name,
+      parameter,
+      mean = mean_alpha
+    )
+}
+
+extract_pooled_ftnd <- function(model_obj, roi_name) {
+  model_obj$B_subj %>%
+    filter(covariate == "ftnd_std", parameter %in% params_keep) %>%
+    transmute(
+      roi = roi_name,
+      parameter,
+      mean = mean
+    )
+}
+
+pooled_baseline_df <- imap_dfr(all_pooled_models, extract_pooled_baseline) %>%
+  add_plot_metadata() %>%
+  mutate(estimate_type = "Pooled")
+
+pooled_ftnd_df <- imap_dfr(all_pooled_models, extract_pooled_ftnd) %>%
+  add_plot_metadata() %>%
+  mutate(estimate_type = "Pooled")
+
+# Plotting function
+make_run_plot_roi_compare <- function(df, region_filter, title_text, ylab_text,
+                                      pooled_df = NULL) {
+  dodge <- position_dodge(width = 0.15)
+  
+  p <- ggplot(
+    df %>% filter(region == region_filter),
+    aes(
+      x = run,
+      y = mean,
+      color = roi_type,
+      shape = roi_type,
+      group = interaction(roi_type, estimate_type)
+    )
+  ) +
+    geom_hline(
+      yintercept = 0,
+      linetype = "dashed",
+      color = "gray50",
+      linewidth = 0.5
+    )
+  
+  if (!is.null(pooled_df)) {
+    p <- p +
+      geom_hline(
+        data = pooled_df %>% filter(region == region_filter),
+        aes(
+          yintercept = mean,
+          color = roi_type,
+          linetype = estimate_type
+        ),
+        linewidth = 0.6,
+        inherit.aes = FALSE
+      )
+  }
+  
+  p +
+    geom_line(
+      aes(linetype = estimate_type),
+      linewidth = 0.8,
+      position = dodge
+    ) +
+    geom_point(
+      size = 3.0,
+      position = dodge
+    ) +
+    geom_errorbar(
+      aes(ymin = lower, ymax = upper),
+      width = 0.08,
+      linewidth = 0.7,
+      position = dodge
+    ) +
+    facet_wrap(~ parameter_label, ncol = 2, scales = "fixed") +
+    scale_color_brewer(palette = "Dark2") +
+    scale_shape_manual(values = c(
+      "Full ROI" = 16,
+      "Thresholded ROI" = 17
+    )) +
+    scale_linetype_manual(
+      values = c(
+        "Run" = "solid",
+        "Pooled" = "dotted"
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = "Run",
+      y = ylab_text,
+      color = NULL,
+      shape = NULL,
+      linetype = NULL
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+      axis.title = element_text(face = "bold", size = 13),
+      axis.text = element_text(face = "bold", size = 11),
+      strip.text = element_text(face = "bold", size = 12),
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom",
+      legend.text = element_text(face = "bold", size = 11)
+    )
+}
+
+p_mfg_baseline <- make_run_plot_roi_compare(
+  baseline_df2,
+  region_filter = "MFG",
+  title_text = "MFG: Baseline Connectivity by Run",
+  ylab_text = "Posterior mean (95% HDI)",
+  pooled_df = pooled_baseline_df
+)
+
+p_insula_baseline <- make_run_plot_roi_compare(
+  baseline_df2,
+  region_filter = "Insula",
+  title_text = "Insula: Baseline Connectivity by Run",
+  ylab_text = "Posterior mean (95% HDI)",
+  pooled_df = pooled_baseline_df
+)
+
+p_mfg_ftnd <- make_run_plot_roi_compare(
+  ftnd_df2,
+  region_filter = "MFG",
+  title_text = "MFG: FTND Effects by Run",
+  ylab_text = "FTND effect (95% HDI)",
+  pooled_df = pooled_ftnd_df
+)
+
+p_insula_ftnd <- make_run_plot_roi_compare(
+  ftnd_df2,
+  region_filter = "Insula",
+  title_text = "Insula: FTND Effects by Run",
+  ylab_text = "FTND effect (95% HDI)",
+  pooled_df = pooled_ftnd_df
+)
+
+p_mfg_baseline
+p_mfg_ftnd
+p_insula_baseline
+p_insula_ftnd
