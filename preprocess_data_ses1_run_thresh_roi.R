@@ -5,7 +5,7 @@ library(nlme)
 library(dplyr)
 
 # ---------------- User settings ----------------
-subjects <- c(110,111,120,121,124,128,134,143,152,160,171,172,173,181,
+subjects <- c(120,121,124,128,134,143,152,160,171,172,173,181,
               184,196,199,214,215,223,227,230,247,252,256,258,265,266,268,
               271,275,276,277) # need to use p = 0.1 for sub 199 and 215, run 2
 
@@ -14,7 +14,15 @@ timing_dir <- "/storage/group/alh98/default/VLN_BIDS/participant_data_complete"
 data_dir <- "Data"   # where to save .RData
 mask_file <- "mask.nii"
 TR <- 2
-pval_thresh <- 0.05   # uncorrected threshold for voxel selection
+pval_thresh <- 0.05   # uncorrected threshold for voxel selectionx
+
+# Exploratory voxel-count settings (does NOT affect current VOI selection)
+count_p_grid <- c(0.05, 0.10, 0.15)
+min_count_vox <- 1
+roi_names <- c("MFG", "Insula", "Precuneus/PCC")
+
+# Collect one combined df across all processed subject/run/ROI combinations
+voxel_count_summary <- list()
 # -------------------------------------------------
 
 # ---------------- Functions --------------------
@@ -158,11 +166,71 @@ get_timing_file <- function(prefix, run, type){
   if(file.exists(file2)) return(file2)
   stop(paste0("Timing file not found for run ",run," type ",type))
 }
+
+summarize_voxel_counts <- function(res_df,
+                                   p_grid = c(0.05, 0.10, 0.15),
+                                   min_vox = 1) {
+  # Use t-value sign for consistent activation/deactivation labeling
+  pos_idx_all <- which(!is.na(res_df$p_uncorrected) &
+                         !is.na(res_df$tval) &
+                         res_df$tval > 0)
+  
+  neg_idx_all <- which(!is.na(res_df$p_uncorrected) &
+                         !is.na(res_df$tval) &
+                         res_df$tval < 0)
+  
+  used_p <- tail(p_grid, 1)
+  n_selected <- 0
+  
+  for (pth in p_grid) {
+    pos_now <- which(!is.na(res_df$p_uncorrected) &
+                       !is.na(res_df$tval) &
+                       res_df$p_uncorrected <= pth &
+                       res_df$tval > 0)
+    
+    neg_now <- which(!is.na(res_df$p_uncorrected) &
+                       !is.na(res_df$tval) &
+                       res_df$p_uncorrected <= pth &
+                       res_df$tval < 0)
+    
+    n_now <- length(pos_now) + length(neg_now)
+    used_p <- pth
+    n_selected <- n_now
+    
+    if (n_now >= min_vox) break
+  }
+  
+  activated_idx <- which(!is.na(res_df$p_uncorrected) &
+                           !is.na(res_df$tval) &
+                           res_df$p_uncorrected <= used_p &
+                           res_df$tval > 0)
+  
+  deactivated_idx <- which(!is.na(res_df$p_uncorrected) &
+                             !is.na(res_df$tval) &
+                             res_df$p_uncorrected <= used_p &
+                             res_df$tval < 0)
+  
+  noisy_idx <- setdiff(seq_len(nrow(res_df)),
+                       union(activated_idx, deactivated_idx))
+  
+  n_total <- nrow(res_df)
+  
+  data.frame(
+    n_total = n_total,
+    n_activated = length(activated_idx),
+    n_deactivated = length(deactivated_idx),
+    n_noisy = length(noisy_idx),
+    prop_activated = length(activated_idx) / n_total,
+    prop_deactivated = length(deactivated_idx) / n_total,
+    prop_noisy = length(noisy_idx) / n_total,
+    count_p_used = used_p
+  )
+}
 # -------------------------------------------------
 
 mask <- readNifti(mask_file)
 
-for(sub in subjects[20:33]){
+for(sub in subjects){
   cat("\nProcessing subject:", sub,"\n")
   
   func_dir <- file.path(base_dir, paste0("sub-",sub),"ses-1","func")
@@ -248,6 +316,20 @@ for(sub in subjects[20:33]){
       res_df$beta <- as.numeric(res_df$beta)
       res_df$tval <- as.numeric(res_df$tval)
       res_df$p_uncorrected <- as.numeric(res_df$p_uncorrected)
+      
+      # Exploratory voxel-count summary (separate from main VOI selection)
+      count_row <- summarize_voxel_counts(
+        res_df = res_df,
+        p_grid = count_p_grid,
+        min_vox = min_count_vox
+      )
+      
+      voxel_count_summary[[length(voxel_count_summary) + 1]] <- data.frame(
+        subject = sub,
+        run = m,
+        roi = roi_names[i],
+        count_row
+      )
       
       # Compute one-sided p: p_one = p_two / 2 for voxels with expected sign, otherwise set large
       p_one <- rep(Inf, nrow(res_df))
@@ -346,3 +428,8 @@ for(sub in subjects[20:33]){
   
   cat("Finished subject", sub,"\n")
 }
+
+voxel_count_summary_df <- dplyr::bind_rows(voxel_count_summary)
+
+save(voxel_count_summary_df,
+     file = file.path(data_dir, "voxel_count_summary_df.RData"))
