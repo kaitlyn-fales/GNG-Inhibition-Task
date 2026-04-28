@@ -71,11 +71,12 @@ for (i in seq_along(conditions)) {
   B_subj_summary <- summ_fun(B_subj_draws)
   
   B_subj_index <- expand.grid(
-    parameter = par_names,
     covariate = subj_cov_names,
+    parameter = par_names,
     KEEP.OUT.ATTRS = FALSE,
     stringsAsFactors = FALSE
-  )
+  ) %>%
+    dplyr::select(parameter, covariate)
   
   B_subj_table <- tibble(
     parameter = B_subj_index$parameter,
@@ -105,11 +106,12 @@ for (i in seq_along(conditions)) {
   B_run_summary <- summ_fun(B_run_draws)
   
   B_run_index <- expand.grid(
-    parameter = par_names,
     covariate = run_cov_names,
+    parameter = par_names,
     KEEP.OUT.ATTRS = FALSE,
     stringsAsFactors = FALSE
-  )
+  ) %>%
+    dplyr::select(parameter, covariate)
   
   B_run_table <- tibble(
     parameter = B_run_index$parameter,
