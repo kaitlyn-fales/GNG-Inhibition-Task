@@ -144,7 +144,7 @@ out_z <- out_z[,-1]
 # Hemodynamic model 
 y_signal = sapply(1:m, function(i) HRF_mu(out_z[-1,i],times[-1]))
 
-# Identifiability assumptions checking (A4)
+# Identifiability assumptions checking (A3)
 tol = 1e-8
 # A tilde d distinct real eigenvalues for each experimental block
 
@@ -166,36 +166,11 @@ distinct_check <- min(abs(outer(eig_real, eig_real, "-")[upper.tri(diag(length(e
 
 paste0("Real = ",real_check,", Distinct = ",distinct_check)
 
-# Identifiability assumptions checking (A5)
-# Linear independence of z0 and A raised to powers
-check_A5 <- function(A, s_star, tol = 1e-8) {
-  d <- nrow(A)
-  
-  K <- matrix(NA_real_, nrow = d, ncol = d)
-  K[, 1] <- s_star
-  
-  A_power <- diag(d)
-  for (j in 2:d) {
-    A_power <- A_power %*% A
-    K[, j] <- A_power %*% s_star
-  }
-  
-  r <- qr(K, tol = tol)$rank
-  
-  list(
-    K = K,
-    rank = r,
-    full_rank = (r == d),
-    assumption_holds = (r == d),
-    determinant = det(K)
-  )
-}
 
-check_A5(A = paramMats$A, s_star = z0)
 
-# Identifiability assumptions checking (A6)
+# Identifiability assumptions checking (A4)
 # Data blocks are invertible
-check_A6 <- function(V_block, tol = 1e-8) {
+check_A4 <- function(V_block, tol = 1e-8) {
   # V_block should contain the first d+1 observed state vectors in block b
   # arranged as a d x (d+1) matrix:
   # columns are v_1^(b), ..., v_(d+1)^(b)
@@ -220,14 +195,14 @@ check_A6 <- function(V_block, tol = 1e-8) {
   )
 }
 
-check_A6(V_block = t(y_signal[2:31,]))
-check_A6(V_block = t(y_signal[32:35,]))
-check_A6(V_block = t(y_signal[36:69,]))
-check_A6(V_block = t(y_signal[70:73,]))
-check_A6(V_block = t(y_signal[74:107,]))
-check_A6(V_block = t(y_signal[108:112,]))
-check_A6(V_block = t(y_signal[113:146,]))
-check_A6(V_block = t(y_signal[147:157,]))
+check_A4(V_block = t(y_signal[2:31,]))
+check_A4(V_block = t(y_signal[32:35,]))
+check_A4(V_block = t(y_signal[36:69,]))
+check_A4(V_block = t(y_signal[70:73,]))
+check_A4(V_block = t(y_signal[74:107,]))
+check_A4(V_block = t(y_signal[108:112,]))
+check_A4(V_block = t(y_signal[113:146,]))
+check_A4(V_block = t(y_signal[147:157,]))
 
 
 
