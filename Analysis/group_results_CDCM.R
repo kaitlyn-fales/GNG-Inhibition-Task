@@ -37,7 +37,7 @@ summ_fun <- function(draw_obj) {
 # Loop through conditions
 for (i in seq_along(conditions)) {
   
-  load(paste0("Analysis/", conditions[i], ".RData"))
+  load(paste0("Analysis/Results/", conditions[i], ".RData"))
   
   # -----------------------------
   # alpha
