@@ -3,6 +3,11 @@ library(deSolve)
 library(nlme)
 library(tidyverse)
 
+# Create data folders as needed
+dir.create("Simulation/Data_Mean",showWarnings = F,recursive = T)
+dir.create("Simulation/Data_PCA",showWarnings = F,recursive = T)
+dir.create("Simulation/Metrics",showWarnings = F,recursive = T)
+
 ############ Setting parameters #######################################
 # 2 nodes, 2 experimental inputs
 m = 2; n_u = 2
@@ -40,94 +45,6 @@ SNR_vals <- seq(0.1,2,length.out = 8)
 pval_thresh = 0.01
 ########################################################################
 
-############ Functions #################################################
-# Function for structuring parameters
-struct_paramMats = function(m, n_u, idxs, nu){
-  
-  A = matrix(data = 0,nrow = m, ncol = m)
-  for(i in 1:nrow(idxs$A_idxs)){
-    A[idxs$A_idxs[i,1], idxs$A_idxs[i,2]] = with(nu,nu_A[i])
-  }
-  diag(A) = -0.5*exp(diag(A))
-  
-  B = lapply(1:n_u, function(x){matrix(data = 0,nrow = m, ncol = m)})
-  for(i in 1:nrow(idxs$B_idxs)){
-    B[[idxs$B_idxs[i,1]]][idxs$B_idxs[i,2], idxs$B_idxs[i,3]] = with(nu,nu_B[i])
-  }
-  
-  C = matrix(data=0, nrow = m, ncol = n_u)
-  for(i in 1:nrow(idxs$C_idxs)){
-    C[idxs$C_idxs[i,1], idxs$C_idxs[i,2]] = with(nu,nu_C[i])
-  }
-  
-  return(list(A=A,B=B,C=C))
-  
-}
-
-# ODE for neural activation that needs to be solved
-linear <- function(t, z, params, input) {
-  # t is the current time point in the integration, 
-  # z is the current estimate of the variables in the ODE system
-  A = params[["A"]]
-  B = params[["B"]]
-  C = params[["C"]]
-  u = matrix(input(t),ncol=1)
-  B_all = Reduce("+",lapply(1:nrow(u), function(i) u[i,1]*B[[i]]))
-  dz <- (A+B_all)%*%z + C%*%u
-  return(list(dz))
-}
-
-# Putting together to form U matrix of experimental inputs
-input_u = function(t){
-  c(approxfun(x = times,y = u[,1],rule = 2)(t),
-    approxfun(x = times,y = u[,2],rule = 2)(t))
-}
-
-# hrf function (using the difference of two gammas - canonical)
-HRF = function(t){dgamma(x = t, shape = 6,rate = 1) - (1/6)*dgamma(x = t,shape = 16,rate = 1)}
-HRF_mu = function(mu,tp){
-  convolve(mu, rev(HRF(tp)),type="open")[1:length(tp)]
-}
-
-# Function for running scale factors for each beta distribution of interest
-get_scale_factors <- function(dist, n) {
-  L <- 0.5
-  U <- 1.5
-  
-  if (dist == "beta_sym") {
-    # Middle-concentrated (most values near 1)
-    return(L + (U - L) * rbeta(n, 3, 3))
-    
-  } else if (dist == "beta_u") {
-    # U-shaped (extremes near 0.5 and 1.5)
-    return(L + (U - L) * rbeta(n, 0.5, 0.5))
-    
-  } else {
-    stop("dist must be 'beta_sym' or 'beta_u'")
-  }
-}
-
-# Function to get first PC and have correct sign
-get_BOLD_eigenvariate <- function(BOLD){
-  pca <- prcomp(BOLD, center=TRUE, scale.=FALSE)
-  V <- pca$rotation[,1]
-  U <- pca$x[,1]
-  d <- sign(sum(V)); if(d==0) d <- 1
-  (U*d)/sqrt(ncol(BOLD))
-}
-
-# Function for simple voxelwise task glm and extract coefficient and pval
-task_glm <- function(y, X){
-  df <- data.frame(y, X)
-  mdl <- gls(y~., data=df, correlation = corAR1())
-  
-  tval <- summary(mdl)$tTable[,"t-value"][2]
-  pval <- summary(mdl)$tTable[,"p-value"][2]
-  
-  return(c(tval,pval))
-}
-########################################################################
-
 # Randomly select a design u matrix from the real data (unique to each replicate)
 subjects <- c(110,111,120,121,124,128,134,143,152,160,171,172,173,181,
               184,196,199,214,215,223,227,230,247,252,256,258,265,266,268,
@@ -155,24 +72,21 @@ for (dist in dist_names){
     
     rm(dat) # get rid of data object
     
-    # Model params
-    paramMats = struct_paramMats(m = m,n_u = n_u,idxs = idxs,nu = nu)
-    
-    # Solve the ODE for z
-    out_z <- ode(y = z0,
-                 times = times,
-                 func = linear,
-                 parms= with(paramMats, list(A=A, B=B, C=C)),
-                 input = input_u,
-                 atol = 1e-6, 
-                 rtol = 1e-6
+    # Simulate data with high SNR to get true signal
+    sim <- simulate_cdcm(
+      nu = nu,
+      hypothesis_idxs = idxs,
+      nscan = length(times)-1,
+      m = m,
+      n_u = n_u,
+      TR = (times[2] - times[1]),
+      U = u,
+      SNR = 1e6,
+      z0 = z0
     )
     
-    # Get rid of first column of z (same as times)
-    out_z <- out_z[,-1]
-    
-    # Hemodynamic model 
-    y_signal = sapply(1:m, function(i) HRF_mu(out_z[-1,i],times[-1]))
+    dat <- sim$simulated_data
+    y_signal <- dat$y_obs
     
     # Target signals
     target_MFG <- y_signal[,1]
@@ -211,7 +125,7 @@ for (dist in dist_names){
         variance <-  numeric()
         y_obs <- matrix(NA, nrow = length(times)-1, ncol = m)
         for (l in 1:m){
-          variance[l] <- (var(y_scaled[,l])+(mean(y_scaled[,l]))^2)/SNR
+          variance[l] <- (var(y_scaled[,l]))/ SNR
           y_obs[,l] <- y_scaled[,l] + rnorm(length(times)-1, mean = 0, sd = sqrt(variance[l]))
         }
         
