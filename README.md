@@ -111,17 +111,17 @@ The primary analyses were developed using:
 * Stan
 * SPM12 (MATLAB)
 
-Some analyses additionally require:
-
-* MATLAB
-* SPM12
-* SLURM-based HPC environments for large-scale estimation
+Some analyses additionally require SLURM-based HPC environments for large-scale estimation.
 
 ---
 
 # Data Notes
 
-This repository was developed for analyses of smoking abstinence Go/No-Go fMRI data. Because the underlying imaging data are not publicly distributed through this repository, users must supply their own data inputs and adapt paths accordingly.
+This repository was developed for analyses of smoking abstinence Go/No-Go fMRI data. The underlying imaging data are not publicly distributed through this repository due to data-use and human-subject protections associated with the study. 
+
+The simulation studies included in this repository can be reproduced fully end-to-end. The real-data analysis workflow is also computationally reproducible given appropriate access to the imaging data and corresponding directory structure; however, the raw and processed imaging data themselves are restricted and are therefore not included in this repository.
+
+Users wishing to adapt the workflow to other datasets will likely need to modify file paths, preprocessing organization, and task-specific inputs accordingly.
 
 Several scripts contain HPC-specific paths and submission configurations that may need to be modified for local environments.
 
