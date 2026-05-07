@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=4gb
 #SBATCH --time=24:00:00
 #SBATCH --account=statsresearch_sc_default
-#SBATCH --output=output_%A_%a.out
+#SBATCH --output=Output/output_%A_%a.out
 #SBATCH --array=1-4
 
 # Get started

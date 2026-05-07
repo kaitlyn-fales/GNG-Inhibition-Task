@@ -138,7 +138,7 @@ meta_data <- list(
 )
 
 # Compile stan model
-mod <- cmdstan_model("../Canonical-DCM-Method/meta_analysis_multirun.stan")  
+mod <- cmdstan_model("../Group_Mdl/meta_analysis_multirun.stan") 
 
 init_fun <- function() {
   list(
@@ -210,6 +210,6 @@ fit <- mod$sample(
 draws <- as_draws_df(fit$draws())
 
 # Save
-save(draws, file = paste0(region_condition,"_",type_condition,".RData"))
+save(draws, file = paste0("Output/",region_condition,"_",type_condition,".RData"))
 
 
