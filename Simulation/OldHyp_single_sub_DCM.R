@@ -15,21 +15,21 @@ load(data_file)
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(mcmcse))
 suppressPackageStartupMessages(library(momentLS))
+suppressPackageStartupMessages(library(cdcm))
 
 ######## Change specifications here ###########
 
 # Output specs
 output_dir <- "Output_OldHyp"
-basename <- tools::file_path_sans_ext(basename(data_file))
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
-# Source functions
-source("../Canonical-DCM-Method/canonical_dcm_functions.R")
+basename <- tools::file_path_sans_ext(basename(data_file))
 
 ###############################################
 
 ########### Get data ready ####################
 # Compile stan program
-canonical_dcm = cmdstanr::cmdstan_model("../Canonical-DCM-Method/canonical_dcm.stan")
+canonical_dcm = compile_cdcm()
 
 # Indices of parameters in hypothesis
 A_idxs <- matrix(c(1,1,
@@ -49,8 +49,7 @@ idxs <- list(A_idxs = A_idxs,
 stan_dat <- get_stan_dat(dat, idxs)
 
 # Convergence check specs - 95% intervals with 5% tolerance
-num_param <- get_num_param(stan_dat)
-ess_check <- as.numeric(minESS(num_param, alpha = 0.05, eps = 0.05))
+ess_check <- minESS_criterion(stan_dat, alpha = 0.05, eps = 0.05)
 ###############################################
 
 ########### Initialize sampler ################
@@ -59,18 +58,12 @@ ess_check <- as.numeric(minESS(num_param, alpha = 0.05, eps = 0.05))
 inits_list <- get_initial_vals(canonical_dcm, stan_dat)
 
 # Run sampler until convergence
-dcm_sample(mod = canonical_dcm, 
-           data = stan_dat, 
-           inits_list = inits_list, 
-           output_dir = output_dir,
-           basename = basename,
-           metric = "dense_e",
-           refresh = 100,
-           warmup_iter = 5000,
-           n_iter_chunk = 1000,
-           max_iter = 100000,
-           adapt_delta = 0.9,
-           seed = 1234,
-           chains = 1)
+results <- dcm_sample(mod = canonical_dcm, 
+                      data = stan_dat, 
+                      inits_list = inits_list, 
+                      output_dir = output_dir,
+                      basename = basename,
+                      ess_check = ess_check,
+                      seed = 1234)
 ###############################################
 
