@@ -96,9 +96,7 @@ Placeholder directory for generated model outputs, posterior draws, figures, dia
 
 This repository relies heavily on the companion `cdcm` R package, which implements the Canonical Dynamic Causal Modeling framework.
 
-The `cdcm` package repository is available here:
-
-* cdcm package repository[https://github.com/kaitlyn-fales/cdcm](https://github.com/kaitlyn-fales/cdcm)
+The `cdcm` package repository is available here: [https://github.com/kaitlyn-fales/cdcm](https://github.com/kaitlyn-fales/cdcm)
 
 Before running the analyses in this repository, install the `cdcm` package and its dependencies.
 
