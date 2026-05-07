@@ -1,6 +1,6 @@
 # SPM
 
-This folder contains the SPM-based DCM analyses used as a comparison framework and sanity check against the CDCM analyses. The workflows include single-subject SPM DCM estimation, preprocessing utilities, and group-level analyses based on the SPM outputs.
+This folder contains the SPM-based DCM analyses used as a comparison framework against the CDCM analyses. The workflows include single-subject SPM DCM estimation, preprocessing utilities, and group-level analyses based on the SPM outputs.
 
 The analyses in this folder were implemented using MATLAB and SPM12.
 
