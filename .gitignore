@@ -8,6 +8,7 @@
 *.mat
 *.out
 *.png
+*.csv
 
 # User-specific files
 .Ruserdata
