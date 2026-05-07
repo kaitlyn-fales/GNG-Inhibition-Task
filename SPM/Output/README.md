@@ -1,0 +1,1 @@
+Empty directory to store SPM single subject DCM outputs.
