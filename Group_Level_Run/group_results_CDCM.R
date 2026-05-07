@@ -44,7 +44,7 @@ for (r in 1:length(run_id)){
   # Loop through conditions
   for (i in 1:length(conditions)) {
     
-    load(paste0("Group_Level_Run/", conditions[i], "_run", run_id[r], ".RData"))
+    load(paste0("Group_Level_Run/Results/", conditions[i], "_run", run_id[r], ".RData"))
     
     # -----------------------------
     # alpha

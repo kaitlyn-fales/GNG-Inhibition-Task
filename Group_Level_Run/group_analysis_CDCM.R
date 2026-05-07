@@ -94,7 +94,7 @@ meta_data <- list(
 )
 
 # Compile stan model
-mod <- cmdstan_model("../Canonical-DCM-Method/meta_analysis.stan")  
+mod <- compile_meta_analysis()
 
 init_fun <- function() {
   list(
@@ -160,6 +160,6 @@ fit <- mod$sample(
 draws <- as_draws_df(fit$draws())
 
 # Save
-save(draws, file = paste0(region_condition,"_",type_condition,"_run",run_id,".RData"))
+save(draws, file = paste0("Results/",region_condition,"_",type_condition,"_run",run_id,".RData"))
 
 
